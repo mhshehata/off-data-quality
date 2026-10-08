@@ -79,11 +79,27 @@ def first_brand(values):
     return tags[0] if tags else None
 
 
+def is_valid_gtin(barcode):
+    """R02: digits only, length 8/12/13/14, GTIN mod-10 check digit correct."""
+    if not isinstance(barcode, str) or not barcode.isascii() or not barcode.isdigit():
+        return False
+    if len(barcode) not in (8, 12, 13, 14):
+        return False
+    digits = [int(c) for c in barcode]
+    check_digit = digits[-1]
+    # Reverse the digits without the check digit; weights alternate 3, 1, 3, 1...
+    body = digits[:-1][::-1]
+    total = sum(d * (3 if i % 2 == 0 else 1) for i, d in enumerate(body))
+    return (10 - total % 10) % 10 == check_digit
+
+
 # ---------- one raw record -> one staging row ----------
 
 def transform(record):
+    barcode = clean_text(record.get("code"))
     return {
-        "barcode": clean_text(record.get("code")),
+        "barcode": barcode,
+        "barcode_valid": is_valid_gtin(barcode),
         "product_name": clean_text(record.get("product_name")),
         "brand_raw": clean_text(record.get("brands")),
         "brand_normalised": first_brand(record.get("brands_tags")),
@@ -105,14 +121,14 @@ def transform(record):
 
 
 COLUMNS = [
-    "barcode", "product_name", "brand_raw", "brand_normalised", "categories",
+    "barcode", "barcode_valid", "product_name", "brand_raw", "brand_normalised", "categories",
     "quantity_text", "quantity_value", "quantity_unit", "serving_size",
     "ingredients_text", "labels", "countries", "last_modified_at", "created_at",
     "last_editor", "language", "off_dq_errors", "off_states",
 ]
 
 # Rerun-safe. If a barcode already exists for this file, the row is replaced
-# only when the incoming version is newer. A repeat inside one file therefore
+# when the incoming version is newer or the same (>=), never when it is older. A repeat inside one file therefore
 # keeps the newest last_modified_t.
 UPSERT = f"""
 INSERT INTO staging.stg_product (source_file, {", ".join(COLUMNS)})
@@ -121,7 +137,7 @@ ON CONFLICT (source_file, barcode) DO UPDATE SET
     {", ".join(c + " = EXCLUDED." + c for c in COLUMNS if c != "barcode")},
     loaded_at = now()
 WHERE staging.stg_product.last_modified_at IS NULL
-   OR EXCLUDED.last_modified_at > staging.stg_product.last_modified_at
+   OR EXCLUDED.last_modified_at >= staging.stg_product.last_modified_at
 """
 
 QUARANTINE = """
