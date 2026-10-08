@@ -93,6 +93,35 @@ def is_valid_gtin(barcode):
     return (10 - total % 10) % 10 == check_digit
 
 
+SOURCE_PRECEDENCE = ["manufacturer", "packaging", "estimate"]
+
+
+def _best_set(sets, basis):
+    """Among as_sold sets with this basis, the one with the best source (first on ties)."""
+    candidates = [
+        s for s in sets
+        if isinstance(s, dict) and s.get("preparation") == "as_sold" and s.get("per") == basis
+        and s.get("source") in SOURCE_PRECEDENCE
+    ]
+    if not candidates:
+        return None
+    return min(candidates, key=lambda s: SOURCE_PRECEDENCE.index(s["source"]))
+
+
+def select_nutrition_set(sets, quantity_unit):
+    """Pick ONE nutrition set (STTM row 14).
+
+    Preferred basis: 100ml if the unit is ml, otherwise 100g.
+    Filter: as_sold and the preferred basis; then manufacturer > packaging > estimate.
+    If nothing matches, repeat with the other basis (fallback, flagged later as R23).
+    Returns the chosen set, or None.
+    """
+    if not isinstance(sets, list):
+        return None
+    preferred, other = ("100ml", "100g") if lower_text(quantity_unit) == "ml" else ("100g", "100ml")
+    return _best_set(sets, preferred) or _best_set(sets, other)
+
+
 # ---------- one raw record -> one staging row ----------
 
 def transform(record):
