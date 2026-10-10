@@ -49,6 +49,19 @@ def to_number(value):
     return None
 
 
+# Factor to multiply by to get grams. Both micro signs (U+00B5 and U+03BC) and plain "ug" occur.
+GRAM_FACTORS = {"g": 1, "mg": 1 / 1000, "µg": 1 / 1_000_000, "μg": 1 / 1_000_000, "ug": 1 / 1_000_000}
+
+
+def to_grams(value, unit):
+    """Convert a nutrient amount to grams. Unknown unit (%, kcal, ...) or non-number -> None."""
+    number = to_number(value)
+    factor = GRAM_FACTORS.get(lower_text(unit))
+    if number is None or factor is None:
+        return None
+    return number * factor
+
+
 def unix_to_timestamp(value):
     """UNIX seconds -> timezone-aware UTC datetime."""
     if isinstance(value, bool) or not isinstance(value, (int, float)):
@@ -122,11 +135,69 @@ def select_nutrition_set(sets, quantity_unit):
     return _best_set(sets, preferred) or _best_set(sets, other)
 
 
+# column name -> nutrient key in the source set (all stored in grams)
+GRAM_NUTRIENTS = {
+    "fat_g": "fat",
+    "saturated_fat_g": "saturated-fat",
+    "carbs_g": "carbohydrates",
+    "sugars_g": "sugars",
+    "proteins_g": "proteins",
+    "fiber_g": "fiber",
+}
+
+NUTRITION_COLUMNS = (
+    ["nutrition_source", "nutrition_basis", "energy_kcal"]
+    + list(GRAM_NUTRIENTS)
+    + ["salt_g", "salt_derived"]
+)
+
+
+def extract_nutrition(chosen_set):
+    """Read the 11 nutrition columns from the one chosen set (STTM rows 14-20).
+
+    Mass nutrients are converted to grams, energy stays in kcal, modifiers (~, <)
+    are ignored. If salt is missing but sodium is present: salt = sodium * 2.5
+    and salt_derived = True. No set -> every column None.
+    """
+    row = dict.fromkeys(NUTRITION_COLUMNS)
+    if not isinstance(chosen_set, dict):
+        return row
+    nutrients = chosen_set.get("nutrients") or {}
+
+    def entry(key):
+        value = nutrients.get(key)
+        return value if isinstance(value, dict) else {}
+
+    row["nutrition_source"] = chosen_set.get("source")
+    row["nutrition_basis"] = chosen_set.get("per")
+
+    energy = entry("energy-kcal")
+    if lower_text(energy.get("unit")) == "kcal":
+        row["energy_kcal"] = to_number(energy.get("value"))
+
+    for column, key in GRAM_NUTRIENTS.items():
+        item = entry(key)
+        row[column] = to_grams(item.get("value"), item.get("unit"))
+
+    salt = entry("salt")
+    sodium = entry("sodium")
+    row["salt_g"] = to_grams(salt.get("value"), salt.get("unit"))
+    row["salt_derived"] = False
+    if row["salt_g"] is None:
+        sodium_g = to_grams(sodium.get("value"), sodium.get("unit"))
+        if sodium_g is not None:
+            row["salt_g"] = sodium_g * 2.5
+            row["salt_derived"] = True
+    return row
+
+
 # ---------- one raw record -> one staging row ----------
 
 def transform(record):
     barcode = clean_text(record.get("code"))
-    return {
+    nutrition_sets = (record.get("nutrition") or {}).get("input_sets")
+    chosen_set = select_nutrition_set(nutrition_sets, record.get("product_quantity_unit"))
+    row = {
         "barcode": barcode,
         "barcode_valid": is_valid_gtin(barcode),
         "product_name": clean_text(record.get("product_name")),
@@ -147,6 +218,8 @@ def transform(record):
         "off_dq_errors": clean_tags(record.get("data_quality_errors_tags")),
         "off_states": clean_tags(record.get("states_tags")),
     }
+    row.update(extract_nutrition(chosen_set))
+    return row
 
 
 COLUMNS = [
@@ -154,7 +227,7 @@ COLUMNS = [
     "quantity_text", "quantity_value", "quantity_unit", "serving_size",
     "ingredients_text", "labels", "countries", "last_modified_at", "created_at",
     "last_editor", "language", "off_dq_errors", "off_states",
-]
+] + NUTRITION_COLUMNS
 
 # Rerun-safe. If a barcode already exists for this file, the row is replaced
 # when the incoming version is newer or the same (>=), never when it is older. A repeat inside one file therefore
