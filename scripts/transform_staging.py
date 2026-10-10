@@ -15,6 +15,8 @@ from datetime import datetime, timezone
 import psycopg
 from dotenv import load_dotenv
 
+from gtin import gtin_check
+
 load_dotenv()
 
 DEFAULT_SOURCE_FILE = "openfoodfacts_products_1790749069_1790836258.json.gz"
@@ -94,16 +96,7 @@ def first_brand(values):
 
 def is_valid_gtin(barcode):
     """R02: digits only, length 8/12/13/14, GTIN mod-10 check digit correct."""
-    if not isinstance(barcode, str) or not barcode.isascii() or not barcode.isdigit():
-        return False
-    if len(barcode) not in (8, 12, 13, 14):
-        return False
-    digits = [int(c) for c in barcode]
-    check_digit = digits[-1]
-    # Reverse the digits without the check digit; weights alternate 3, 1, 3, 1...
-    body = digits[:-1][::-1]
-    total = sum(d * (3 if i % 2 == 0 else 1) for i, d in enumerate(body))
-    return (10 - total % 10) % 10 == check_digit
+    return gtin_check(barcode) is None
 
 
 SOURCE_PRECEDENCE = ["manufacturer", "packaging", "estimate"]
