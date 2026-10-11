@@ -1,13 +1,16 @@
 import gzip
 import json
 import os
+import sys
 
 import psycopg
 from dotenv import load_dotenv
 
 load_dotenv()
 
-path = "data/openfoodfacts_products_1790749069_1790836258.json.gz"
+DEFAULT_PATH = "data/openfoodfacts_products_1790749069_1790836258.json.gz"
+
+path = sys.argv[1] if len(sys.argv) > 1 else DEFAULT_PATH
 source_file = os.path.basename(path)
 
 INSERT_GOOD = """
