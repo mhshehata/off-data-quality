@@ -223,7 +223,7 @@ def run_sql_rules(conn, source_files):
 
 def main():
     with psycopg.connect(
-        host="localhost", port=5433, dbname="offdq", user="offdq",
+        host=os.environ.get("POSTGRES_HOST", "localhost"), port=int(os.environ.get("POSTGRES_PORT", "5433")), dbname="offdq", user="offdq",
         password=os.environ["POSTGRES_PASSWORD"],
     ) as conn:
         source_files = [r[0] for r in conn.execute(
