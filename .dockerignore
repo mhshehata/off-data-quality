@@ -1,0 +1,7 @@
+.git
+.env
+data/
+__pycache__/
+*.gz
+.DS_Store
+.ipynb_checkpoints/
