@@ -52,7 +52,17 @@ To follow, as each one is built and tested.
 
 ## Results (rows in, rows out, rows rejected)
 
-Not run yet. Numbers go here after the first full run.
+Measured on the VPS after loading 20 daily delta files. The first file opens on 28 September 2026.
+
+| Stage | Rows |
+|---|---|
+| Raw records loaded | 137,153 |
+| Staged | 137,150 |
+| Rejected (R01, no barcode) | 3 |
+
+137,150 + 3 = 137,153, so every raw record ends up either staged or quarantined. None disappear.
+
+Speed: one daily file end to end (download, load, transform, 18 implemented rules) took 45 seconds. Nine files plus one rules pass took 4 minutes 30 seconds. The rules pass re-checks every file already in staging, so this time will grow each day until the rules take a source-file argument.
 
 ## Setup
 
