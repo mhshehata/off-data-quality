@@ -100,7 +100,7 @@ order by 1, 2;
 |---|---|---|
 | The same file is loaded twice | Raw rows have a primary key on file and line number and are inserted with `ON CONFLICT DO NOTHING`. Staging is an upsert on file and barcode. Failures are an upsert on barcode, rule, rule version and file, and stale ones are deleted. | Tested: a second load read 7,629 lines and inserted 0. A second full run returned `nothing_new`. |
 | A record has no barcode | Rule R01: the record goes to `rejected_row` with its line number and the reason, and is not staged. | Tested on real data: 4 rows over 26 files. |
-| A line is not valid JSON | The line goes to `rejected_row` with the parser's error and the load continues. | In the code. No such line has appeared in real data yet, so this path is untested. |
+| A line is not valid JSON | The line goes to `rejected_row` with the parser's error, its line number and the raw text, and the load continues. | Tested with a 3-line file containing one broken line: read 3, inserted 2, rejected 1. No such line has appeared in real data yet. |
 | Rows go missing between stages | For every file, raw rows = staged rows + rejected rows. `mart.dim_file` makes this a one-line query. | Tested on all 26 files. |
 | A stage fails partway | The run stops, names the failed stage and returns HTTP 500. The n8n error workflow writes the failure to `ops.pipeline_error`. A file counts as loaded only once it is in staging, so the next run picks it up again. | In the code. The error workflow has only been run with n8n sample data, not a real failure. A deliberate-breakage test is still to do. |
 | A download is cut off | The file is written as `.part` and renamed only when complete, so a half file is never loaded. | In the code, not tested. |
