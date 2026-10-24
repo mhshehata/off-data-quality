@@ -5,7 +5,7 @@
 
 Product data goes wrong in boring ways: a salt value of 720 g per 100 g, a quantity written as text but never turned into a number, nutrition facts missing altogether. Checking this manually when you have millions of entries does not make any sense. Open Food Facts publishes a new batch of products every day, and the one I profiled had 7,629 records, nearly a quarter with no nutrition data at all. This project checks every record against a written set of rules, stores each failure with its reason, and marks which ones could be fixed from data already in the record. A planned second step will let an AI suggest those fixes, with a person making the final call.
 
-## Before: the manual baseline (an estimate)
+## Why it matters: the manual baseline (an estimate)
 
 I counted what one daily file would need and put a time on each kind of fix. The counts are measured from one real file (7,629 records). The minutes are assumptions.
 
@@ -24,7 +24,7 @@ By hand, only the quick fixes are practical.
 2. Loads every record as raw JSON into Postgres, with the file name and load time.
 3. Flattens the fields I need into a typed staging table.
 4. Checks every record against 23 written rules (R01 to R23), defined in `docs/sttm.xlsx`. 19 are implemented in code. 4 (R05, R12, R14, R20) are designed but not built.
-5. Stores every failure with its reason. Records with no barcode go to a separate quarantine table.
+5. Stores every failure with its reason. Records with no barcode, and lines that are not valid JSON, go to a separate quarantine table.
 6. Exposes the findings as a small star schema (SQL views in schema `mart`) and calculates quality KPIs in SQL.
 7. n8n runs the pipeline daily at 00:03 (Berlin time) and logs failures to `ops.pipeline_error`. A second n8n workflow writes a weekly quality scorecard to `ops.weekly_scorecard`. There is no external alert; failures are checked in the n8n executions list.
 
@@ -57,14 +57,14 @@ Postgres schemas: `raw_deltafiles` (original JSON and rejected lines), `staging`
 
 ## Decisions and why
 
-- **Daily delta files, not API scraping.** A file can be rerun on exactly the same input. An API call cannot.
+- **Daily delta files, not API scraping.** A file can be rerun on exactly the same input. An API returns whatever is current at the time of the call.
 - **Raw layer first, typed staging second.** The full original JSON is kept, so rules can change and rerun without downloading again.
 - **Nutrition comes from `nutrition`, not `nutriments`.** In the file I profiled, `nutriments` exists in 29.9% of records and is filled in 0.0% of them.
 - **One nutrition set per product.** As sold, per 100 g (100 ml for liquids), source order manufacturer, then packaging, then estimate. The source is stored. Per-serving values are not converted, because a serving size adds error.
 - **Rules are written before code.** Each rule has a severity (1 critical, 15 important, 7 optional) and a separate fix suggestion. A check finds a problem. A fix repairs it. They are not the same thing.
 - **I compare against Open Food Facts' own checks instead of rebuilding them.** I checked three of my rules against their code. R02 (barcode check digit) has no equivalent there. R18 and R19 overlap with their checks, at least partly.
 - **No automatic fixes for identity or numbers.** Barcodes and nutrition values are never guessed. The design allows AI suggestions for only four rules (R04 to R07), using only text already in the record, with a person confirming each one. The AI step is not built yet.
-- **Findings live in three tables.** `dq_rule` holds each rule once. `dq_failure` holds one row per rule hit per product, optional rules included, and rerunning the same file replaces its rows instead of duplicating them. `rejected_row` holds records with no barcode.
+- **Findings live in three tables.** `dq_rule` holds each rule once. `dq_failure` holds one row per rule hit per product, optional rules included, and rerunning the same file replaces its rows instead of duplicating them. `rejected_row` holds records with no barcode and lines that are not valid JSON.
 - **The star schema is a set of views, not a second load.** The fact is `dq_failure` and the lookups are derived from tables that already exist, so there is nothing extra to keep in sync or reconcile. The cost is that it is a read layer, not a separate warehouse.
 - **Two repositories.** This one is the pipeline. A second, planned repository would read `dq_failure` and own everything about AI suggestions and review. It does not exist yet.
 
@@ -101,7 +101,7 @@ order by 1, 2;
 | The same file is loaded twice | Raw rows have a primary key on file and line number and are inserted with `ON CONFLICT DO NOTHING`. Staging is an upsert on file and barcode. Failures are an upsert on barcode, rule, rule version and file, and stale ones are deleted. | Tested: a second load read 7,629 lines and inserted 0. A second full run returned `nothing_new`. |
 | A record has no barcode | Rule R01: the record goes to `rejected_row` with its line number and the reason, and is not staged. | Tested on real data: 4 rows over 26 files. |
 | A line is not valid JSON | The line goes to `rejected_row` with the parser's error, its line number and the raw text, and the load continues. | Tested with a 3-line file containing one broken line: read 3, inserted 2, rejected 1. No such line has appeared in real data yet. |
-| Rows go missing between stages | For every file, raw rows = staged rows + rejected rows. `mart.dim_file` makes this a one-line query. | Tested on all 26 files. |
+| Rows go missing between stages | For every file, raw rows = staged rows + rejected rows (R01, no barcode). `mart.dim_file` makes this a one-line query. Invalid JSON lines never enter the raw table, so they are counted separately as `invalid_json_lines`. | Tested on all 26 files. |
 | A stage fails partway | The run stops, names the failed stage and returns HTTP 500. The n8n error workflow writes the failure to `ops.pipeline_error`. A file counts as loaded only once it is in staging, so the next run picks it up again. | In the code. The error workflow has only been run with n8n sample data, not a real failure. A deliberate-breakage test is still to do. |
 | A download is cut off | The file is written as `.part` and renamed only when complete, so a half file is never loaded. | In the code, not tested. |
 | Two runs overlap | The second call gets HTTP 409 `busy` and does nothing. | In the code, not tested. |

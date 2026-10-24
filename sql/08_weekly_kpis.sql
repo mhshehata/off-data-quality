@@ -17,6 +17,7 @@ stg as (
 rej as (
     select source_file, count(*) as rejected_rows
     from raw_deltafiles.rejected_row
+    where reason like 'R01%'   -- lines that are not valid JSON never enter raw
     group by source_file
 )
 select r.source_file,

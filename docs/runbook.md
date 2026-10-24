@@ -40,7 +40,7 @@ Every stage is safe to run again. Rerun by opening `OFF DQ daily pipeline` in n8
 | Stage `rules` failed | Database error or a rule bug | Fix, rerun. Failures are upserted and stale ones deleted, so reruns do not duplicate. |
 | The run returned HTTP 409 `busy` | A run is already in progress | Do not start another. Wait and check the log. |
 | n8n shows a timeout but the log is still moving | n8n waits 10 minutes, the pipeline up to 1 hour (a large catch-up) | Let it finish. Check the log and `mart.dim_file`. Do not trigger again while it runs. |
-| The reconciliation query returns rows | A file was only partly processed | Rerun the pipeline. If the file still does not balance, check its rows in `raw_deltafiles.rejected_row` and `staging.stg_product`. |
+| The reconciliation query returns rows (invalid JSON lines do not count here; see `invalid_json_lines` in `mart.dim_file`) | A file was only partly processed | Rerun the pipeline. If the file still does not balance, check its rows in `raw_deltafiles.rejected_row` and `staging.stg_product`. |
 | No scorecard row for last week | The Tuesday run happened before the last file loaded, or it failed | Check `ops.pipeline_error`, then run `OFF DQ weekly scorecard` manually before the following Monday. It upserts, so a second run is safe. It always computes the previous calendar week relative to today. |
 
 ## Known gaps
