@@ -1,0 +1,165 @@
+{
+  "name": "OFF DQ error handler",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "e0bf5291-c1e2-4b49-8c53-aced4d516efa",
+      "name": "Error Trigger"
+    },
+    {
+      "parameters": {
+        "schema": {
+          "__rl": true,
+          "value": "ops",
+          "mode": "list",
+          "cachedResultName": "ops"
+        },
+        "table": {
+          "__rl": true,
+          "value": "pipeline_error",
+          "mode": "list",
+          "cachedResultName": "pipeline_error"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "workflow_id": "={{ $json.workflow.id }}",
+            "workflow_name": "={{ $json.workflow.name }}",
+            "execution_id": "={{ $json.execution.id }}",
+            "execution_url": "={{ $json.execution.url }}",
+            "error_message": "={{ $json.execution.error.message }}",
+            "mode": "={{ $json.execution.mode }}",
+            "last_node": "={{ $json.execution.lastNodeExecuted }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "error_id",
+              "displayName": "error_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "logged_at",
+              "displayName": "logged_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "workflow_id",
+              "displayName": "workflow_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "workflow_name",
+              "displayName": "workflow_name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "execution_id",
+              "displayName": "execution_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "execution_url",
+              "displayName": "execution_url",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "last_node",
+              "displayName": "last_node",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "error_message",
+              "displayName": "error_message",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "mode",
+              "displayName": "mode",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        224,
+        0
+      ],
+      "id": "82f2c544-487b-4820-99b9-0ad0f46cc050",
+      "name": "Insert rows in a table",
+      "credentials": {
+        "postgres": {
+          "id": "C9mGzvNeas669k3R",
+          "name": "Postgres account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Error Trigger": {
+      "main": [
+        [
+          {
+            "node": "Insert rows in a table",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": true
+  }
+}

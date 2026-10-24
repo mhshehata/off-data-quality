@@ -1,0 +1,102 @@
+{
+  "name": "OFF DQ weekly scorecard",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "weeks",
+              "triggerAtDay": [
+                2
+              ],
+              "triggerAtHour": 6
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.4,
+      "position": [
+        0,
+        0
+      ],
+      "id": "af67d9ea-a895-47a3-8e6e-69858719351d",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "insert into ops.weekly_scorecard (week_start, kpi, detail, value)\nselect t.week_start, v.kpi, '', v.value\nfrom (select (date_trunc('week', current_date) - interval '7 days')::date as week_start) t\ncross join lateral (\n    select 'files_loaded' as kpi, count(distinct source_file)::numeric as value\n    from raw_deltafiles.off_product\n    where date_trunc('week', to_timestamp(split_part(source_file, '_', 3)::bigint))::date = t.week_start\n    union all\n    select 'rows_staged', count(*)::numeric\n    from staging.stg_product\n    where date_trunc('week', to_timestamp(split_part(source_file, '_', 3)::bigint))::date = t.week_start\n    union all\n    select 'rows_rejected', count(*)::numeric\n    from raw_deltafiles.rejected_row\n    where date_trunc('week', to_timestamp(split_part(source_file, '_', 3)::bigint))::date = t.week_start\n) v\non conflict (week_start, kpi, detail)\ndo update set value = excluded.value, computed_at = now();",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        224,
+        0
+      ],
+      "id": "77af1e17-561f-4653-9daf-00869ed26fcb",
+      "name": "Execute a SQL query",
+      "credentials": {
+        "postgres": {
+          "id": "C9mGzvNeas669k3R",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "insert into ops.weekly_scorecard (week_start, kpi, detail, value)\nwith t as (\n    select (date_trunc('week', current_date) - interval '7 days')::date as week_start\n),\nchecked as (\n    select count(*) as staged_rows\n    from staging.stg_product s\n    cross join t\n    where date_trunc('week', to_timestamp(split_part(s.source_file, '_', 3)::bigint))::date = t.week_start\n),\nfails as (\n    select t.week_start, d.rule_id, r.dimension, d.barcode, d.source_file\n    from dq.dq_failure d\n    join dq.dq_rule r using (rule_id, rule_version)\n    cross join t\n    where r.counts_against_score\n      and date_trunc('week', to_timestamp(split_part(d.source_file, '_', 3)::bigint))::date = t.week_start\n)\nselect week_start, 'rule_rows_affected_pct', rule_id,\n       round(100.0 * count(distinct (barcode, source_file)) / (select staged_rows from checked), 2)\nfrom fails\ngroup by week_start, rule_id\nunion all\nselect week_start, 'rows_affected_pct', dimension,\n       round(100.0 * count(distinct (barcode, source_file)) / (select staged_rows from checked), 2)\nfrom fails\ngroup by week_start, dimension\non conflict (week_start, kpi, detail)\ndo update set value = excluded.value, computed_at = now();",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        448,
+        0
+      ],
+      "id": "6208c917-9c48-4ee8-8780-05428d9e1ad0",
+      "name": "Execute a SQL query1",
+      "credentials": {
+        "postgres": {
+          "id": "C9mGzvNeas669k3R",
+          "name": "Postgres account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Execute a SQL query",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute a SQL query": {
+      "main": [
+        [
+          {
+            "node": "Execute a SQL query1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "timeSavedMode": "fixed",
+    "errorWorkflow": "mYFDUaa0jhzKlV8P",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": true
+  }
+}
