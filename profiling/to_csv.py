@@ -1,7 +1,7 @@
 import sys, json, csv, itertools
 cols = ["code","product_name","brands","categories_tags","quantity","product_quantity",
         "product_quantity_unit","serving_size","labels_tags","countries_tags",
-        "last_editor","last_modified_t","n_nutrition_sets","set_source","set_per",
+        "last_modified_t","n_nutrition_sets","set_source","set_per",
         "energy-kcal","fat","sugars","proteins","salt"]
 w = csv.writer(sys.stdout)
 w.writerow(cols)

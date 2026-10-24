@@ -16,7 +16,7 @@ I counted what one daily file would need and put a time on each kind of fix. The
 | Tier 3: package photo or product page | 4,963 | 1 to 3 min (assumed) | about 83 to 248 h |
 | **Total** | | | **about 110 to 330 person-hours** |
 
-By hand, only the quick fixes are practical. The "after" number goes here once the pipeline has run.
+By hand, only the quick fixes are practical.
 
 ## What it does
 
@@ -32,7 +32,28 @@ A second repository (planned, not built yet) will add the AI step on top of the 
 
 ## Architecture
 
-Diagram and n8n canvas screenshot to follow once the first full run works.
+```
+Open Food Facts                 One VPS, Docker Compose
+daily delta files               +--------------------------------------------------+
+(static.openfoodfacts.org)      |                                                  |
+        |                       |  n8n  --- every day 00:03 --- POST /run -->      |
+        |                       |                                  pipeline        |
+        +-------- download -----+------------------------------->  (Python)        |
+                                |                                  fetch > load >  |
+                                |                                  transform >     |
+                                |                                  rules           |
+                                |                                     |            |
+                                |  Postgres 18  <---------------------+            |
+                                |   raw_deltafiles  staging  dq  mart  ops         |
+                                |                                                  |
+                                |  n8n error workflow --> ops.pipeline_error       |
+                                |  n8n weekly workflow (Tue 06:00) --> ops.weekly_scorecard
+                                +--------------------------------------------------+
+```
+
+n8n only schedules and routes errors. All data work is Python in a separate container, which n8n calls over HTTP and which is under version control here. A failed stage stops the run, names itself in the response and returns an HTTP error, so n8n sees the failure.
+
+Postgres schemas: `raw_deltafiles` (original JSON and rejected lines), `staging` (typed products), `dq` (rules and failures), `mart` (the star schema views), `ops` (pipeline errors and the weekly scorecard). The n8n workflows are exported in `workflows/`.
 
 ## Decisions and why
 
@@ -42,10 +63,10 @@ Diagram and n8n canvas screenshot to follow once the first full run works.
 - **One nutrition set per product.** As sold, per 100 g (100 ml for liquids), source order manufacturer, then packaging, then estimate. The source is stored. Per-serving values are not converted, because a serving size adds error.
 - **Rules are written before code.** Each rule has a severity (1 critical, 15 important, 7 optional) and a separate fix suggestion. A check finds a problem. A fix repairs it. They are not the same thing.
 - **I compare against Open Food Facts' own checks instead of rebuilding them.** I checked three of my rules against their code. R02 (barcode check digit) has no equivalent there. R18 and R19 overlap with their checks, at least partly.
-- **No automatic fixes for identity or numbers.** Barcodes and nutrition values are never guessed. Only four rules (R04 to R07) are open to AI suggestions, using only text already in the record, and a person confirms each one.
+- **No automatic fixes for identity or numbers.** Barcodes and nutrition values are never guessed. The design allows AI suggestions for only four rules (R04 to R07), using only text already in the record, with a person confirming each one. The AI step is not built yet.
 - **Findings live in three tables.** `dq_rule` holds each rule once. `dq_failure` holds one row per rule hit per product, optional rules included, and rerunning the same file replaces its rows instead of duplicating them. `rejected_row` holds records with no barcode.
 - **The star schema is a set of views, not a second load.** The fact is `dq_failure` and the lookups are derived from tables that already exist, so there is nothing extra to keep in sync or reconcile. The cost is that it is a read layer, not a separate warehouse.
-- **Two repositories.** This one is the pipeline. The second reads `dq_failure` and owns everything about AI suggestions and review.
+- **Two repositories.** This one is the pipeline. A second, planned repository would read `dq_failure` and own everything about AI suggestions and review. It does not exist yet.
 
 ## Star schema
 
@@ -75,7 +96,17 @@ order by 1, 2;
 
 ## Failure modes handled
 
-To follow, as each one is built and tested.
+| What goes wrong | What happens | Status |
+|---|---|---|
+| The same file is loaded twice | Raw rows have a primary key on file and line number and are inserted with `ON CONFLICT DO NOTHING`. Staging is an upsert on file and barcode. Failures are an upsert on barcode, rule, rule version and file, and stale ones are deleted. | Tested: a second load read 7,629 lines and inserted 0. A second full run returned `nothing_new`. |
+| A record has no barcode | Rule R01: the record goes to `rejected_row` with its line number and the reason, and is not staged. | Tested on real data: 4 rows over 26 files. |
+| A line is not valid JSON | The line goes to `rejected_row` with the parser's error and the load continues. | In the code. No such line has appeared in real data yet, so this path is untested. |
+| Rows go missing between stages | For every file, raw rows = staged rows + rejected rows. `mart.dim_file` makes this a one-line query. | Tested on all 26 files. |
+| A stage fails partway | The run stops, names the failed stage and returns HTTP 500. The n8n error workflow writes the failure to `ops.pipeline_error`. A file counts as loaded only once it is in staging, so the next run picks it up again. | In the code. The error workflow has only been run with n8n sample data, not a real failure. A deliberate-breakage test is still to do. |
+| A download is cut off | The file is written as `.part` and renamed only when complete, so a half file is never loaded. | In the code, not tested. |
+| Two runs overlap | The second call gets HTTP 409 `busy` and does nothing. | In the code, not tested. |
+
+Known gaps: there is no alert outside n8n (failures are read from the executions list and `ops.pipeline_error`). The rules stage re-checks every staged file on every run, so it gets slower each day. Downloaded files are never deleted. Four designed rules (R05, R12, R14, R20) have no code yet. See `docs/runbook.md` for what to do when something fails.
 
 ## Results (rows in, rows out, rows rejected)
 
@@ -93,7 +124,16 @@ Speed: one daily file end to end (download, load, transform and the 18 rules imp
 
 ## Setup
 
-To follow after the first full run.
+You need Docker or a Postgres 18 database, and Python 3.12.
+
+1. Create a Postgres database `offdq` with a user `offdq`. These names are fixed in the scripts.
+2. Create a `.env` file with `POSTGRES_PASSWORD`. The scripts connect to `localhost:5433` by default; set `POSTGRES_HOST` and `POSTGRES_PORT` to change that. `.env` is git-ignored.
+3. `pip install -r requirements.txt`
+4. Create the tables and views, in order: `python scripts/run_sql.py sql/01_raw.sql`, then `02`, `03`, `04`, `05`, `06`, `07`, `09`, `10`. (`sql/08_weekly_kpis.sql` holds read-only queries to run with `psql`.)
+5. `python scripts/load_dq_rules.py` loads the rule catalogue from `docs/sttm.xlsx`.
+6. `python scripts/run_pipeline.py` downloads every delta file in the Open Food Facts index that is not loaded yet, oldest first, and runs all stages. To start small, use `python scripts/run_pipeline.py --max 2`. Each file is about 30 MB.
+
+To run it on a schedule, the `Dockerfile` builds the pipeline container (gunicorn on port 5001, endpoint `POST /run`). The Compose file for my server holds host-specific settings and is not in this repository. In n8n, import the three files from `workflows/`, attach your own Postgres credential to the Postgres nodes, and set the error workflow of the daily and weekly workflows to the imported error handler. The exports contain the ID of my instance's error handler, so it has to be re-selected. The schedules use the n8n instance timezone (Europe/Berlin on mine).
 
 ## Data and licence
 
