@@ -48,4 +48,6 @@ Every stage is safe to run again. Rerun by opening `OFF DQ daily pipeline` in n8
 - No alert outside n8n. Check Executions and `ops.pipeline_error`.
 - The rules stage re-checks every staged file each run and gets slower over time.
 - Downloaded files in `data/` are never deleted.
+- No backup outside the server. The only backup so far is a manual `pg_dump -Fc` taken before an OS upgrade.
+- Disk will fill. After 26 files the database was 2.3 GB (about 13 KB per row), and each delta file adds about 30 MB on top of the database growth. At roughly 7,600 records a day the 19 GB disk fills in about two months (my estimate). Check `df -h /` weekly until retention is added.
 - Rules R05, R12, R14 and R20 are designed but not implemented.
