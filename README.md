@@ -106,7 +106,7 @@ order by 1, 2;
 | A download is cut off | The file is written as `.part` and renamed only when complete, so a half file is never loaded. | In the code, not tested. |
 | Two runs overlap | The second call gets HTTP 409 `busy` and does nothing. | In the code, not tested. |
 
-Known gaps: there is no alert outside n8n (failures are read from the executions list and `ops.pipeline_error`). The nightly rules stage checks only the newly loaded files; a full re-check of every staged file is a manual run after a rule changes. Downloaded files are never deleted. Four designed rules (R05, R12, R14, R20) have no code yet. See `docs/runbook.md` for what to do when something fails.
+Known gaps: there is no alert outside n8n (failures are read from the executions list and `ops.pipeline_error`). The nightly rules stage checks only the newly loaded files; a full re-check of every staged file is a manual run after a rule changes. A successful run deletes the files it downloaded (the data is in Postgres); a failed run keeps them. Four designed rules (R05, R12, R14, R20) have no code yet. See `docs/runbook.md` for what to do when something fails.
 
 ## Results (rows in, rows out, rows rejected)
 

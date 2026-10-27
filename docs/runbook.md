@@ -47,7 +47,7 @@ Every stage is safe to run again. Rerun by opening `OFF DQ daily pipeline` in n8
 
 - No alert outside n8n. Check Executions and `ops.pipeline_error`.
 - The nightly rules stage checks only new files (about 8 s per file). After changing a rule, run a full re-check by hand: `docker compose exec -T pipeline python scripts/run_dq_rules.py` (about 2 min at 28 files, growing with file count).
-- Downloaded files in `data/` are never deleted.
+- A successful run deletes the files it downloaded from `data/`; a failed run keeps them for inspection. Leftover `.part` files from a cut-off download are not cleaned up.
 - No backup outside the server. The only backup so far is a manual `pg_dump -Fc` taken before an OS upgrade.
 - Disk will fill. After 26 files the database was 2.3 GB (about 13 KB per row), and each delta file adds about 30 MB on top of the database growth. At roughly 7,600 records a day the 19 GB disk fills in about two months (my estimate). Check `df -h /` weekly until retention is added.
 - Rules R05, R12, R14 and R20 are designed but not implemented.

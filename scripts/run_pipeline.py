@@ -38,6 +38,10 @@ def main():
         run("load", "load_raw.py", path)
         run("transform", "transform_staging.py", os.path.basename(path))
     run("rules", "run_dq_rules.py", *[os.path.basename(p) for p in paths])
+    # Everything is in Postgres now (raw keeps every line), so the downloaded file is not needed.
+    # Only reached when all stages succeeded; a failed run keeps its files for inspection.
+    for path in paths:
+        os.remove(path)
     print(json.dumps({"status": "ok", "source_files": [os.path.basename(p) for p in paths]}))
 
 
