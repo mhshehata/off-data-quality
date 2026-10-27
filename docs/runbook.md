@@ -48,6 +48,6 @@ Every stage is safe to run again. Rerun by opening `OFF DQ daily pipeline` in n8
 - No alert outside n8n. Check Executions and `ops.pipeline_error`.
 - The nightly rules stage checks only new files (about 8 s per file). After changing a rule, run a full re-check by hand: `docker compose exec -T pipeline python scripts/run_dq_rules.py` (about 2 min at 28 files, growing with file count).
 - A successful run deletes the files it downloaded from `data/`; a failed run keeps them for inspection. Leftover `.part` files from a cut-off download are not cleaned up.
-- No backup outside the server. The only backup so far is a manual `pg_dump -Fc` taken before an OS upgrade.
+- Backups are pulled by hand from a laptop, not scheduled. Run the backup script weekly (Postgres dump plus the n8n data volume, streamed over SSH, nothing written on the server). The dump's table of contents was checked with `pg_restore -l`; a full restore has not been tested. The n8n archive holds the credentials and encryption key, so it stays off Git and off synced folders. n8n uses SQLite in its data volume, which the Postgres dump does not cover.
 - Disk will still fill, more slowly. Downloaded files are now deleted after each run (27 Oct: 8.2 GB free of 19 GB). The database grows by roughly 88 MB per delta file (2.3 GB at 26 files; my estimate), so about three months of headroom. Check `df -h /` weekly. The real fix is deciding how much of the raw JSON to keep.
 - Rules R05, R12, R14 and R20 are designed but not implemented.
