@@ -120,7 +120,18 @@ Measured on the VPS after loading 26 daily delta files. The first file opens on 
 
 176,875 + 4 = 176,879, so every raw record ends up either staged or quarantined. None disappear. The same check holds for each of the 26 files individually.
 
-Speed: one daily file end to end (download, load, transform and the 18 rules implemented at the time) took 45 seconds. Nine files plus one rules pass took 4 minutes 30 seconds. The rules pass re-checks every file already in staging, so this time will grow each day until the rules take a source-file argument.
+Speed: one daily file end to end (download, load, transform and the 18 rules implemented at the time) took 45 seconds. Nine files plus one rules pass took 4 minutes 30 seconds. The rules pass re-checks every file already in staging, so this time keeps growing until the rules take a source-file argument. On 27 October, with 28 files in staging, the nightly run for one new file took 2 minutes 48 seconds.
+
+## Example output: the weekly scorecard
+
+Every Tuesday at 06:00 the second n8n workflow writes last week's numbers to `ops.weekly_scorecard`. The week of 19 October 2026 was written by the scheduled run.
+
+| Week starting | Files | Rows staged | Completeness | Consistency | Validity |
+|---|---|---|---|---|---|
+| 12 Oct | 7 | 45,633 | 63.78% | 4.82% | 0.38% |
+| 19 Oct | 7 | 50,308 | 60.73% | 5.36% | 0.43% |
+
+Each percentage is the share of staged rows with at least one failed scored rule in that dimension. A row can fail several rules, so the dimensions do not add up. The same table holds the share per rule. In the week of 19 October the biggest were R09 missing ingredients (56.77%), R11 missing nutrition (29.97%) and R04 missing brand (20.55%). The same three rules lead every week, so the useful view is the change per rule from week to week.
 
 ## Setup
 
