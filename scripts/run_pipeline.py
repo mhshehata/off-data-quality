@@ -37,7 +37,7 @@ def main():
     for path in paths:
         run("load", "load_raw.py", path)
         run("transform", "transform_staging.py", os.path.basename(path))
-    run("rules", "run_dq_rules.py")
+    run("rules", "run_dq_rules.py", *[os.path.basename(p) for p in paths])
     print(json.dumps({"status": "ok", "source_files": [os.path.basename(p) for p in paths]}))
 
 

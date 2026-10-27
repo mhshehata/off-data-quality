@@ -6,9 +6,15 @@ failures that no longer apply.
 
 Rules here: R02 (barcode check, own function) and the SQL-condition rules
 (completeness and value checks: one table, one generic runner).
+
+Usage:
+    python scripts/run_dq_rules.py                  all files in staging (full rerun,
+                                                    needed after a rule changes)
+    python scripts/run_dq_rules.py FILE [FILE ...]  only these source files (nightly run)
 """
 import collections
 import os
+import sys
 
 import psycopg
 from dotenv import load_dotenv
@@ -197,8 +203,8 @@ def r02_failures(rows):
 def run_r02(conn, source_files):
     flagged = conn.execute("""
         SELECT source_file, barcode FROM staging.stg_product
-        WHERE barcode_valid IS NOT TRUE
-    """).fetchall()
+        WHERE barcode_valid IS NOT TRUE AND source_file = ANY(%s::text[])
+    """, (source_files,)).fetchall()
     failures = r02_failures(flagged)
     total, removed = write_failures(conn, R02_ID, "barcode", failures, source_files)
     types = collections.Counter(
@@ -212,7 +218,8 @@ def run_sql_rules(conn, source_files):
     for rule_id, (field, condition, evidence_sql, reason) in RULES.items():
         rows = conn.execute(
             f"SELECT source_file, barcode, {evidence_sql} FROM staging.stg_product "
-            f"WHERE {condition}"
+            f"WHERE ({condition}) AND source_file = ANY(%s::text[])",
+            (source_files,),
         ).fetchall()
         failures = collections.defaultdict(list)
         for source_file, barcode, evidence in rows:
@@ -226,8 +233,14 @@ def main():
         host=os.environ.get("POSTGRES_HOST", "localhost"), port=int(os.environ.get("POSTGRES_PORT", "5433")), dbname="offdq", user="offdq",
         password=os.environ["POSTGRES_PASSWORD"],
     ) as conn:
-        source_files = [r[0] for r in conn.execute(
-            "SELECT DISTINCT source_file FROM staging.stg_product").fetchall()]
+        in_staging = {r[0] for r in conn.execute(
+            "SELECT DISTINCT source_file FROM staging.stg_product").fetchall()}
+        requested = sys.argv[1:]
+        unknown = [f for f in requested if f not in in_staging]
+        if unknown:
+            sys.exit(f"not in staging, nothing was checked: {', '.join(unknown)}")
+        source_files = requested or sorted(in_staging)
+        print(f"checking {len(source_files)} file(s)")
         run_r02(conn, source_files)
         run_sql_rules(conn, source_files)
 
