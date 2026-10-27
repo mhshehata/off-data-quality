@@ -106,7 +106,7 @@ order by 1, 2;
 | A download is cut off | The file is written as `.part` and renamed only when complete, so a half file is never loaded. | In the code, not tested. |
 | Two runs overlap | The second call gets HTTP 409 `busy` and does nothing. | In the code, not tested. |
 
-Known gaps: there is no alert outside n8n (failures are read from the executions list and `ops.pipeline_error`). The rules stage re-checks every staged file on every run, so it gets slower each day. Downloaded files are never deleted. Four designed rules (R05, R12, R14, R20) have no code yet. See `docs/runbook.md` for what to do when something fails.
+Known gaps: there is no alert outside n8n (failures are read from the executions list and `ops.pipeline_error`). The nightly rules stage checks only the newly loaded files; a full re-check of every staged file is a manual run after a rule changes. Downloaded files are never deleted. Four designed rules (R05, R12, R14, R20) have no code yet. See `docs/runbook.md` for what to do when something fails.
 
 ## Results (rows in, rows out, rows rejected)
 
@@ -120,7 +120,7 @@ Measured on the VPS after loading 26 daily delta files. The first file opens on 
 
 176,875 + 4 = 176,879, so every raw record ends up either staged or quarantined. None disappear. The same check holds for each of the 26 files individually.
 
-Speed: one daily file end to end (download, load, transform and the 18 rules implemented at the time) took 45 seconds. Nine files plus one rules pass took 4 minutes 30 seconds. The rules pass re-checks every file already in staging, so this time keeps growing until the rules take a source-file argument. On 27 October, with 28 files in staging, the nightly run for one new file took 2 minutes 48 seconds.
+Speed: one daily file end to end (download, load, transform and the 18 rules implemented at the time) took 45 seconds. Nine files plus one rules pass took 4 minutes 30 seconds. At that point the rules pass re-checked every file already in staging, so the time kept growing: on 27 October, with 28 files in staging, the nightly run for one new file took 2 minutes 48 seconds. The rules stage now takes source files as arguments and the nightly run passes only the new ones. Measured on the server: one file 7.5 seconds, against 2 minutes 15 seconds for a full re-check of all 28 files. Both runs leave the 361,062 failure rows unchanged, and an unknown file name exits with an error without checking anything.
 
 ## Example output: the weekly scorecard
 
